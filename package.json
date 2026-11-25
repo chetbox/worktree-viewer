@@ -1,1 +1,1 @@
-{"name":"worktree-viewer","version":"0.1.0","main":"main.js","scripts":{"start":"electron ."},"devDependencies":{"electron":"^45.2.3"}}
+{"name":"worktree-viewer","version":"0.1.0","main":"main.js","scripts":{"start":"electron .","dev":"WT_DEV=1 electron ."},"devDependencies":{"electron":"^45.2.3"}}

@@ -3,6 +3,9 @@ const { execFile, spawn } = require('child_process');
 const fs = require('fs'), path = require('path'), os = require('os'), http = require('http');
 
 const PORT = 8765;
+const DEV = !!process.env.WT_DEV;
+// A dev copy runs next to the normal app, so give it its own browser data folder.
+if (DEV) app.setPath('userData', app.getPath('userData') + '-dev');
 const ROOTS = (process.argv.slice(2).filter(a => !a.startsWith('-') && a !== '.').length
   ? process.argv.slice(2).filter(a => !a.startsWith('-') && a !== '.')
   : (process.env.WT_ROOTS || path.join(os.homedir(), 'Code')).split(':'));
@@ -138,9 +141,16 @@ function ensureExtension() {
 const childEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) =>
   !/^(ELECTRON_|CHROME_|npm_|CLAUDE)/i.test(k) && !['NODE', 'NODE_OPTIONS', 'NODE_ENV', 'INIT_CWD'].includes(k)));
 
+// Resolve true if a VS Code server already listens on PORT (for example, one that the other copy started).
+const serverUp = () => new Promise(r => {
+  const req = http.get({ host: '127.0.0.1', port: PORT, path: '/', timeout: 1000 }, res => { res.resume(); r(true); });
+  req.on('error', () => r(false)); req.on('timeout', () => { req.destroy(); r(false); });
+});
+
 let server;
-function startServer() {
+async function startServer() {
   ensureExtension();
+  if (await serverUp()) return console.log(`Using the VS Code server that already runs on port ${PORT}`);
   server = spawn('code', ['serve-web', '--without-connection-token', '--accept-server-license-terms',
     '--host', '127.0.0.1', '--server-data-dir', DATA, '--port', String(PORT)], { stdio: 'inherit', env: childEnv() });
 }
@@ -148,14 +158,29 @@ function startServer() {
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'; // VS Code web picks its default theme from prefers-color-scheme
   startServer();
-  const win = new BrowserWindow({ width: 1500, height: 950, title: 'Worktrees',
+  const win = new BrowserWindow({ width: 1500, height: 950, title: DEV ? 'Worktrees (dev)' : 'Worktrees',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), webviewTag: true } });
   win.loadFile('index.html');
+  if (DEV) watchForChanges(win);
   if (process.env.WT_SHOT) { // debug: click first worktree, then screenshot
     setTimeout(() => win.webContents.executeJavaScript(process.env.WT_JS || "document.querySelector('[data-new]').click()"), 4000);
     setTimeout(async () => { if (process.env.WT_JS2) console.log('JS2>', await win.webContents.executeJavaScript(process.env.WT_JS2));
       fs.writeFileSync(process.env.WT_SHOT, (await win.capturePage()).toPNG()); app.quit(); }, +(process.env.WT_WAIT || 25000));
   }
 });
+// Dev mode: reload the window when index.html changes, and restart the app when main.js or preload.js changes.
+// Watch the folder, not the files, because some editors save by replacing the file.
+function watchForChanges(win) {
+  let timer;
+  fs.watch(__dirname, (_, file) => {
+    if (!['index.html', 'main.js', 'preload.js'].includes(file)) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (file === 'index.html') { console.log('index.html changed: reloading'); win.webContents.reloadIgnoringCache(); }
+      else { console.log(file + ' changed: restarting'); app.relaunch(); app.quit(); }
+    }, 200);
+  });
+}
+
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => server && server.kill());
