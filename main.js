@@ -157,6 +157,7 @@ async function startServer() {
 
 app.whenReady().then(() => {
   nativeTheme.themeSource = 'dark'; // VS Code web picks its default theme from prefers-color-scheme
+  app.dock?.setIcon(path.join(__dirname, 'icon.png')); // icon.png is made from icon.svg
   startServer();
   const win = new BrowserWindow({ width: 1500, height: 950, title: DEV ? 'Worktrees (dev)' : 'Worktrees',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), webviewTag: true } });
