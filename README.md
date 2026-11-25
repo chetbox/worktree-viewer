@@ -44,6 +44,18 @@ or set `WT_ROOTS` to a colon-separated list:
 WT_ROOTS=~/work:~/projects npm start
 ```
 
+## Working on this app
+
+To edit this app while you use it, run a second copy that reloads when you save:
+
+```sh
+npm run dev
+```
+
+Your normal window stays as it is, so your Claude sessions keep running. Check your changes in the "Worktrees (dev)" window.
+
+The dev window works on your real worktrees, so "Remove" really removes them.
+
 ## Where worktrees go
 
 New worktrees are created next to the repo, in a `<repo>-worktrees` folder:

@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8"><title>Worktrees</title>
 <style>
 body{margin:0;display:flex;height:100vh;font:13px -apple-system,sans-serif;background:#1e1e1e;color:#ddd}
-#side{width:300px;flex:none;overflow:auto;border-right:1px solid #333;padding:8px;box-sizing:border-box}
+#side{width:300px;min-width:180px;max-width:60vw;flex:none;overflow:auto;border-right:1px solid #333;padding:8px;box-sizing:border-box}
 #main{flex:1;display:flex;min-width:0}
 webview{flex:1;display:none}webview.on{display:flex}
 h3{font-size:11px;text-transform:uppercase;color:#888;margin:12px 4px 4px}
@@ -24,11 +24,38 @@ h3 .h{float:right;font-size:10px;padding:1px 6px;text-transform:none;display:non
 #q{width:100%;box-sizing:border-box;margin-top:8px;padding:5px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;outline:none}#q:focus{border-color:#0e639c}
 #empty{margin:auto;color:#666}button{background:#333;color:#ddd;border:0;padding:4px 8px;border-radius:4px;cursor:pointer}
 button:hover{background:#444}
+#drag{width:5px;margin-left:-3px;flex:none;cursor:col-resize;z-index:1}#drag:hover,body.dragging #drag{background:#0e639c}
+body.dragging{cursor:col-resize;user-select:none}body.dragging webview{pointer-events:none}
+#hide{float:right}
+body.collapsed #side{display:none}
+body.collapsed #drag{width:14px;margin:0;cursor:pointer;background:#252526;border-right:1px solid #333;display:flex;align-items:center;justify-content:center}
+body.collapsed #drag::after{content:'›';color:#888}body.collapsed #drag:hover::after{color:#fff}
 </style></head><body>
-<div id="side"><button onclick="refresh()">⟳ Refresh</button> <span id="st" class="p"></span>
+<div id="side"><button id="hide" onclick="setCollapsed(true)" title="Hide sidebar">«</button><button onclick="refresh()">⟳ Refresh</button> <span id="st" class="p"></span>
 <input id="q" placeholder="Filter repos / branches / paths…" autofocus><div id="list"></div></div>
+<div id="drag"></div>
 <div id="main"><div id="empty">Select a worktree</div></div>
 <script>
+// ---- Sidebar: drag the edge to resize, « to hide. The width and state are remembered. ----
+const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} };
+function setWidth(w, save = true) {
+  side.style.width = Math.round(w) + 'px'; // CSS min-width and max-width limit the width
+  if (save) pref('sideWidth', side.offsetWidth);
+}
+function setCollapsed(c) {
+  document.body.classList.toggle('collapsed', c); pref('sideCollapsed', c ? '1' : '');
+  drag.title = c ? 'Show sidebar' : 'Drag to resize';
+}
+drag.onmousedown = e => {
+  if (document.body.classList.contains('collapsed')) return setCollapsed(false);
+  e.preventDefault(); document.body.classList.add('dragging');
+  const move = e => setWidth(e.clientX);
+  const up = () => { document.body.classList.remove('dragging'); removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
+  addEventListener('mousemove', move); addEventListener('mouseup', up);
+};
+if (pref('sideWidth')) setWidth(+pref('sideWidth'), false);
+setCollapsed(!!pref('sideCollapsed'));
+
 const views = {}; let selected = null, port, last = null;
 
 async function refresh() {
