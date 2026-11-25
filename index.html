@@ -1,0 +1,146 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Worktrees</title>
+<style>
+body{margin:0;display:flex;height:100vh;font:13px -apple-system,sans-serif;background:#1e1e1e;color:#ddd}
+#side{width:300px;flex:none;overflow:auto;border-right:1px solid #333;padding:8px;box-sizing:border-box}
+#main{flex:1;display:flex;min-width:0}
+webview{flex:1;display:none}webview.on{display:flex}
+h3{font-size:11px;text-transform:uppercase;color:#888;margin:12px 4px 4px}
+.wt{padding:6px 8px 6px 12px;border-radius:4px;cursor:pointer;position:relative}
+.wt:hover{background:#2a2d2e}.wt.sel{background:#094771}
+.wt::before{content:'';position:absolute;left:3px;top:6px;bottom:6px;width:3px;border-radius:2px}
+.wt.cl::before{background:#d97757}
+.wt.idle{padding:2px 8px 2px 12px;opacity:.55}.wt.idle:hover{opacity:1}
+.wt.idle .b{font-weight:400;font-size:12px}.wt.idle .p{font-size:10px}
+.b{font-weight:600;padding-right:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.p{color:#888;font-size:11px;word-break:break-all}
+.repo{color:#888;font-weight:400;font-size:11px;margin-left:6px}
+.pr{padding:3px 8px 3px 12px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.pr:hover{background:#2a2d2e}.pr.out{opacity:.45}.pr.out:hover{opacity:.8}
+.pr .n{color:#3fb950;margin-right:6px}.pr.draft .n{color:#888}.pr .a{color:#888;font-size:10px;margin-left:4px}
+.pr.wt-on::before{content:'';position:absolute;left:3px;top:5px;bottom:5px;width:3px;border-radius:2px;background:#3fb950}
+.sub{font-size:10px;color:#666;margin:6px 4px 2px 12px;text-transform:uppercase}
+.c{display:inline-block;background:#d97757;color:#fff;border-radius:8px;padding:0 6px;font-size:10px;margin-left:6px}
+.acts{position:absolute;right:6px;top:4px;display:none;gap:3px}.wt:hover .acts{display:flex}.acts button{padding:1px 5px;font-size:11px}
+h3 .h{float:right;font-size:10px;padding:1px 6px;text-transform:none;display:none}h3:hover .h{display:inline}
+#q{width:100%;box-sizing:border-box;margin-top:8px;padding:5px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;outline:none}#q:focus{border-color:#0e639c}
+#empty{margin:auto;color:#666}button{background:#333;color:#ddd;border:0;padding:4px 8px;border-radius:4px;cursor:pointer}
+button:hover{background:#444}
+</style></head><body>
+<div id="side"><button onclick="refresh()">⟳ Refresh</button> <span id="st" class="p"></span>
+<input id="q" placeholder="Filter repos / branches / paths…" autofocus><div id="list"></div></div>
+<div id="main"><div id="empty">Select a worktree</div></div>
+<script>
+const views = {}; let selected = null, port, last = null;
+
+async function refresh() {
+  const d = await api.scan(); port = d.port; last = d;
+  st.textContent = d.roots.map(tilde).join(', ');
+  render();
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+const tilde = p => last.home && (p === last.home || p.startsWith(last.home + '/')) ? '~' + p.slice(last.home.length) : p;
+function wtRow(g, w, active) {
+  const n = w.claude.length;
+  return `<div class="wt ${active?'':'idle'} ${n?'cl':''} ${w.path===selected?'sel':''}" data-p="${esc(w.path)}" title="${n?`Claude running (PIDs ${w.claude.join(', ')})`:''}">
+    <div class="acts">${active ? `<button data-close="${esc(w.path)}" title="Close VS Code session">✕</button>` : ''}
+    ${w.main ? '' : `<button data-rm="${esc(w.path)}" data-repo="${esc(g.repo)}" data-ext="${w.claude.join(',')}" title="Remove worktree">🗑</button>`}</div>
+    <div class="b">${esc(w.branch||'?')}${active?`<span class="repo">${esc(g.repo.split('/').pop())}</span>`:''}${n>1?`<span class="c">×${n}</span>`:''}</div>
+    <div class="p">${esc(tilde(w.path))}</div></div>`;
+}
+function render() {
+  if (!last) return;
+  const terms = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+  const m = (...xs) => { const hay = xs.join(' ').toLowerCase(); return terms.every(t => hay.includes(t)); };
+  let h = '';
+  const active = last.groups.flatMap(g => g.worktrees.filter(w => views[w.path] && m(g.repo, w.branch, w.path)).map(w => [g, w]));
+  if (active.length) h += `<h3>Open</h3>` + active.map(([g, w]) => wtRow(g, w, true)).join('');
+  for (const g of last.groups) {
+    const prs = (g.prs || []).filter(pr => m(g.repo, pr.number, pr.title, pr.headRefName, pr.author));
+    const idle = g.worktrees.filter(w => !views[w.path] && m(g.repo, w.branch, w.path));
+    if (!prs.length && !idle.length) continue;
+    h += `<h3>${esc(g.repo.split('/').pop())}<button class="h" data-addwt="${esc(g.repo)}" title="Add worktree">+ worktree</button></h3>`;
+    if (prs.length) h += `<div class="sub">Pull requests</div>` + prs.map(pr =>
+      `<div class="pr ${pr.wt?'':'out'} ${pr.isDraft?'draft':''} ${pr.wt&&views[pr.wt]?'wt-on':''}" data-repo="${esc(g.repo)}" data-n="${pr.number}" data-br="${esc(pr.headRefName)}" data-wt="${esc(pr.wt||'')}"
+        title="${esc(pr.headRefName)}${pr.wt?' — '+esc(tilde(pr.wt)):' — not checked out (click to create worktree)'}"><span class="n">#${pr.number}</span>${esc(pr.title)}<span class="a">${esc(pr.author||'')}</span></div>`).join('');
+    if (idle.length) h += (prs.length ? `<div class="sub">Worktrees</div>` : '') + idle.map(w => wtRow(g, w, false)).join('');
+  }
+  if (last.orphans.length) h += `<h3>Other Claude sessions</h3>` + last.orphans.map(o => `<div class="p" style="padding:4px 8px">${o.pid}: ${esc(tilde(o.cwd))}</div>`).join('');
+  list.innerHTML = h;
+}
+list.onclick = e => {
+  const t = e.target;
+  if (t.dataset.addwt) { e.stopPropagation(); return addWorktree(t.dataset.addwt, t); }
+  if (t.dataset.rm) { e.stopPropagation(); return removeWorktree(t.dataset.repo, t.dataset.rm, t.dataset.ext); }
+  if (t.dataset.close) { e.stopPropagation(); return closeView(t.dataset.close); }
+  const pr = t.closest('.pr'); if (pr) return pr.dataset.wt ? open(pr.dataset.wt) : checkoutPr(pr);
+  const w = t.closest('.wt'); if (w) open(w.dataset.p);
+};
+
+async function addWorktree(repo, btn) {
+  btn.disabled = true; btn.textContent = 'adding…';
+  const r = await wt.add(repo);
+  if (!r.ok) { alert('git worktree add failed:\n' + r.err); return refresh(); }
+  await refresh(); open(r.path);
+}
+async function checkoutPr(el) {
+  if (el.dataset.busy) return; el.dataset.busy = 1; el.style.opacity = 1; el.insertAdjacentHTML('beforeend', ' <i>checking out…</i>');
+  const r = await wt.pr(el.dataset.repo, +el.dataset.n, el.dataset.br);
+  if (!r.ok) { alert('Checkout failed:\n' + r.err); return refresh(); }
+  await refresh(); open(r.path);
+}
+function closeView(p) {
+  views[p]?.remove(); delete views[p];
+  if (selected === p) { selected = null; empty.style.display = ''; }
+  render();
+}
+async function removeWorktree(repo, p, ext) {
+  const pids = ext ? ext.split(',') : [];
+  if (!confirm(`Remove worktree?\n${p}\n\nThis stops ${pids.length} Claude session(s) running there. The branch is kept.`)) return;
+  let r = await wt.remove(repo, p, pids, false);
+  if (!r.ok && confirm(`git refused:\n${r.err}\n\nForce remove (discards uncommitted changes)?`)) r = await wt.remove(repo, p, [], true);
+  if (!r.ok) alert('Remove failed:\n' + r.err);
+  if (r.ok) closeView(p);
+  refresh();
+}
+
+// VS Code web keeps user settings in the browser's IndexedDB; force a few defaults there.
+const FORCED = { 'workbench.colorTheme': 'Default Dark Modern', 'chat.disableAIFeatures': true,
+  'security.workspace.trust.enabled': false,
+  'claudeCode.claudeProcessWrapper': '/Users/chetan/Code/worktree-viewer/claude-wrapper.sh' }; // user chose: Claude Code extension won't run in Restricted Mode
+function seedSettings(v) {
+  v.executeJavaScript(`new Promise(res => {
+    const forced = ${JSON.stringify(FORCED)};
+    const q = indexedDB.open('vscode-web-db');
+    q.onsuccess = () => {
+      const db = q.result;
+      if (!db.objectStoreNames.contains('vscode-userdata-store')) return res(false);
+      const st = db.transaction('vscode-userdata-store', 'readwrite').objectStore('vscode-userdata-store');
+      const g = st.get('/User/settings.json');
+      g.onsuccess = () => {
+        let cur = {};
+        try { if (g.result) cur = JSON.parse(new TextDecoder().decode(g.result)); } catch { return res(false); }
+        if (Object.entries(forced).every(([k, val]) => cur[k] === val)) return res(false);
+        Object.assign(cur, forced);
+        st.put(new TextEncoder().encode(JSON.stringify(cur, null, 2)), '/User/settings.json').onsuccess = () => res(true);
+      };
+    };
+    q.onerror = () => res(false);
+  })`).then(changed => changed && v.reload()).catch(() => {});
+}
+
+function open(p) {
+  selected = p; empty.style.display = 'none';
+  if (!views[p]) { // one webview per worktree so switching is instant
+    const v = document.createElement('webview');
+    v.src = `http://127.0.0.1:${port}/?folder=${encodeURIComponent(p)}`;
+    v.partition = 'persist:vscode-dark';
+    v.addEventListener('dom-ready', () => seedSettings(v));
+    main.appendChild(v); views[p] = v;
+  }
+  for (const k in views) views[k].classList.toggle('on', k === p);
+  render();
+}
+
+q.oninput = render;
+q.onkeydown = e => { if (e.key === 'Escape') { q.value = ''; render(); } if (e.key === 'Enter') list.querySelector('.wt,.pr')?.click(); };
+refresh(); setInterval(refresh, 5000);
+</script></body></html>
