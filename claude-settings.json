@@ -1,1 +1,0 @@
-{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "/Users/chetan/Code/worktree-viewer/bang-shell.sh", "timeout": 70 } ] } ] } }

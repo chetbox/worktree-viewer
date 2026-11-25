@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('appDir', ipcRenderer.sendSync('app-dir'));
 contextBridge.exposeInMainWorld('api', {
   scan: () => ipcRenderer.invoke('scan'),
 });

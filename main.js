@@ -47,6 +47,7 @@ async function claudeSessions() {
   return res;
 }
 
+ipcMain.on('app-dir', e => { e.returnValue = __dirname; });
 ipcMain.handle('scan', async () => {
   const repos = [...new Set(ROOTS.flatMap(r => findRepos(r)))];
   const ext = await claudeSessions();

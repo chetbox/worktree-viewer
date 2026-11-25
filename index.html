@@ -105,7 +105,7 @@ async function removeWorktree(repo, p, ext) {
 // VS Code web keeps user settings in the browser's IndexedDB; force a few defaults there.
 const FORCED = { 'workbench.colorTheme': 'Default Dark Modern', 'chat.disableAIFeatures': true,
   'security.workspace.trust.enabled': false,
-  'claudeCode.claudeProcessWrapper': '/Users/chetan/Code/worktree-viewer/claude-wrapper.sh' }; // user chose: Claude Code extension won't run in Restricted Mode
+  'claudeCode.claudeProcessWrapper': window.appDir + '/claude-wrapper.sh' }; // user chose: Claude Code extension won't run in Restricted Mode
 function seedSettings(v) {
   v.executeJavaScript(`new Promise(res => {
     const forced = ${JSON.stringify(FORCED)};
